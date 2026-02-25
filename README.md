@@ -1,13 +1,76 @@
 # Giới Thiệu Chung
 
-Dự án này là một ứng dụng mô phỏng hệ thống Matching & Scheduling, nơi hai người dùng có thể:
+Đây là một ứng dụng mô phỏng hệ thống Matching & Scheduling với các chức năng sau:
 
-- Like nhau
-- Khi cả hai cùng Like → tạo Match
-- Chọn thời gian rảnh (Availability)
-- Hệ thống tự động tìm **slot trùng nhau đầu tiên**
-- Nếu tìm được → hiển thị lịch hẹn
+# Chức năng chính
 
+Ứng dụng mô phỏng hệ thống **Matching & Scheduling** với các chức năng:
+
+- Tạo profile người dùng mới  
+- Giả lập đăng nhập đơn giản bằng email  
+- Cho phép người dùng **Like** nhau  
+- Khi cả hai cùng **Like** → tạo **Match**  
+- Người dùng có thể chọn **thời gian rảnh (Availability)**  
+- Hệ thống tự động tìm **slot trùng nhau đầu tiên**  
+- Nếu tìm được → hiển thị thời gian **lịch hẹn**  
+
+---
+
+# Luồng nghiệp vụ (Business Flow)
+
+### Bước 1: Tạo Profile
+- Người dùng tạo profile gồm:
+  - Tên  
+  - Tuổi  
+  - Giới tính  
+  - Bio  
+  - Email  
+- Profile được lưu lại trong hệ thống.
+
+---
+
+### Bước 2: Đăng nhập
+- Người dùng đăng nhập bằng email (giả lập, không có password).
+- Sau khi đăng nhập, hệ thống xác định user hiện tại.
+
+---
+
+### Bước 3: Like người dùng khác
+- Người dùng xem danh sách user khác.
+- Khi bấm **Like**:
+  - Hệ thống lưu trạng thái Like.
+
+---
+
+### Bước 4: Tạo Match
+- Khi:
+  - User A Like User B  
+  - User B cũng Like lại User A  
+→ Hệ thống tạo **Match** giữa hai user.
+
+---
+
+### Bước 5: Chọn Availability
+- Sau khi Match, mỗi user có thể:
+  - Chọn các khoảng thời gian rảnh (startTime – endTime).
+- Availability được lưu riêng theo từng Match.
+
+---
+
+### Bước 6: Tìm slot trùng nhau
+- Hệ thống lấy:
+  - Danh sách Availability của User A dành cho User B  
+  - Danh sách Availability của User B dành cho User A  
+- Hai danh sách được sắp xếp theo thời gian bắt đầu tăng dần.
+- So sánh từng slot để tìm **khoảng thời gian trùng nhau đầu tiên**.
+
+---
+
+### Bước 7: Hiển thị kết quả slot trùng nhau đầu tiên
+- Nếu tìm được slot trùng: 
+  - Hiển thị lịch hẹn cho cả hai người dùng.
+- Nếu không tìm được:
+  - Thông báo chưa có thời gian phù hợp.
 ---
 
 # 1. Tổ chức hệ thống (Architecture)
@@ -47,7 +110,7 @@ Backend được tổ chức theo hướng clean structure:
 
 Dữ liệu được lưu bằng:
 
-👉 **MongoDB (Database thực tế)**
+👉 **MongoDB (Database)**
 ---
 
 ## 🟢 Users Collection
@@ -80,16 +143,18 @@ Hệ thống match hoạt động dựa trên nguyên tắc **mutual like (like 
 
 Quy trình xử lý khi một user thực hiện hành động like như sau:
 
+- Frontend xử lý điều kiện đối với user:
+  - Yêu cầu đăng nhập hoặc tạo profile user trước khi thực hiện thao tác like và match với user khác
+  - Không cho phép user like chính mình
+  - Nếu ấn like đến user khác thì lưu lại kết quả `liked` để nhận biết bạn đang like user nào
+  - So sánh user hiện tại có các matchs xem có tồn tại user được like, nếu có -> hiển thị trạng thái `It's a Match` theo yêu cầu và đồng thời cho phép cả 2 user đến màn hình chọn thời gian rảnh
+     
 - Backend kiểm tra dữ liệu đầu vào:
-  - Không cho phép user like chính mình  
   - Đảm bảo cả user hiện tại và user target đều tồn tại  
-
-- Nếu user chưa từng like target trước đó, hệ thống sẽ thêm `targetUserId` vào mảng `likes` của user hiện tại.
-
-- Sau đó, hệ thống kiểm tra điều kiện match bằng cách:
+  - Nếu user chưa từng like target trước đó, hệ thống sẽ thêm `targetUserId` vào mảng `likes` của user hiện tại.
+  - Sau đó, hệ thống kiểm tra điều kiện match bằng cách:
   - Kiểm tra xem `target.likes` có chứa `userId` hay không  
-
-- Nếu điều kiện này đúng (hai bên đã like nhau), hệ thống tạo match bằng cách:
+  - Nếu điều kiện này đúng (hai bên đã like nhau), hệ thống tạo match bằng cách:
   - Thêm `targetUserId` vào mảng `matches` của user hiện tại  
   - Thêm `userId` vào mảng `matches` của user target  
 
@@ -98,25 +163,32 @@ Quy trình xử lý khi một user thực hiện hành động like như sau:
 
 Để tìm khoảng thời gian hẹn gặp chung giữa hai user đã match, hệ thống thực hiện quy trình sau:
 
-- Trước hết, hệ thống lấy danh sách availability của:
-  - User hiện tại dành cho user target  
-  - User target dành cho user hiện tại  
+- Backend xử lý điều kiện đối với user:
+  - Trước hết, hệ thống lấy danh sách availability của 2 user khi đã tạo lịch rảnh:
+   - Tìm các lịch rảnh của user hiện tại và user đối diện
+   - Thực hiện thuật toán overlap tìm khoảng thời gian có trong 2 user:
+     + Lấy Max mốc thời gian bắt đầu của userA và userB
+     + Lấy Min mốc thời gian kết thúc của userA và userB
+     + so sánh nếu: thời gian bắt đầu < thời gian kết thúc => có lịch hẹn trong khoảng thời gian này, ngược lại không có lịch hẹn
 
-- Hai danh sách này được sắp xếp theo `startTime` tăng dần để thuận tiện cho việc so sánh.
+  - Hai danh sách này được sắp xếp theo `startTime` tăng dần để thuận tiện cho việc so sánh và trả ra kết quả cho từng trường hợp sau:
 
-- Nếu một trong hai danh sách rỗng, hệ thống trả về:
-  ```json
-  { "status": "waiting" }
-  ```
-- Nếu một trong hai danh sách không tìm thấy lịch trống, hệ thống trả về:
-  ```json
-  { "status": "no_overlap" }
-  ```
+    - Nếu một trong hai danh sách rỗng, hệ thống trả về:
+      ```json
+      { "status": "waiting" }
+      ```
+    - Nếu một trong hai danh sách không tìm thấy lịch trống, hệ thống trả về:
+      ```json
+      { "status": "no_overlap" }
+      ```
+    
+    - Nếu một trong hai danh sách có lịch gần nhất, hệ thống trả về:
+      ```json
+      { "status": "scheduled" }
+      ```
 
-- Nếu một trong hai danh sách có lịch gần nhất, hệ thống trả về:
-  ```json
-  { "status": "scheduled" }
-  ```
+- Frontend xử lý điều kiện đối với user:
+  - Khi availability được chọn bởi 2 user gọi đến thuật toán tìm lịch trống từ backend sau đó nhận kết quả theo từng trạng thái và hiển thị lên màn hình
 
 # 5. Nếu có thêm thời gian, tôi sẽ cải thiện gì
 
@@ -128,8 +200,8 @@ Nếu có thêm thời gian phát triển, tôi sẽ bổ sung các tính năng 
 ### 1. Chat sau khi match  
 Cho phép hai user nhắn tin trực tiếp sau khi match. Tính năng này giúp tăng tương tác, tạo kết nối trước khi gặp mặt và nâng cao khả năng giữ chân người dùng.
 
-### 2. Gợi ý nhiều khung giờ hẹn  
-Hệ thống trả về danh sách các khoảng thời gian trùng nhau thay vì chỉ slot đầu tiên. Điều này giúp người dùng linh hoạt lựa chọn lịch phù hợp nhất.
+### 2. Lịch hẹn giữa các người dùng  
+Cho phép người dùng xem lịch hẹn đã tạo và cập nhật thời gian nằm trong phạm vi cho phép hoặc có thể hủy lịch hẹn.
 
-### 3. Cập nhật và hủy lịch hẹn  
-Cho phép người dùng chỉnh sửa hoặc hủy lịch hẹn đã tạo. Tính năng này phản ánh đúng nhu cầu thực tế vì lịch cá nhân có thể thay đổi, giúp hệ thống linh hoạt và thực tế hơn.
+### 3. Gợi ý lịch hẹn yêu thích  
+Thay vì phải chọn lịch hẹn, nếu người dùng thường dùng lịch hẹn trong khoảng thời gian cố định từ 3-5 lần hệ thống sẽ ghi nhớ và gợi ý chọn nhanh lịch hẹn của bạn.
